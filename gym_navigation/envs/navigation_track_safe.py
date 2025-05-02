@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 from gymnasium.spaces import Box
-from gymnasium.core import RenderFrame
+# from gymnasium.core import RenderFrame
 
 import pygame
 
@@ -33,11 +33,13 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
     need_auto_reset_wrapper: bool = True #  automatically resets the environment when an episode ends
     need_time_limit_wrapper: bool = False # no truncation
 
-    _num_envs = 1 # number of parallel environments, set to 1 for now
+    #_num_envs = 1 # number of parallel environments, set to 1 for now
 
     def __init__(
         self,
-        render_mode: str = 'rgb_array',
+        env_id: str,
+        num_envs: int = 1,
+        device: str = 'cpu',
         track_id: int = 1,
         **kwargs: dict[str, Any]) -> None:
         """OmniSafe will pass env_id and possibly other config in kwargs."""
@@ -45,7 +47,7 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
     
    
         self._screen = None
-        self.render_mode = render_mode
+        # self.render_mode = render_mode
         self._count = 0
 
         self._num_envs = 1 # number of parallel environments, set to 1 for now
@@ -54,7 +56,7 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
         # - self._observation_space
         # - self._action_space
 
-        NavigationTrack.__init__(self, track_id=track_id, render_mode=render_mode)
+        NavigationTrack.__init__(self, track_id=track_id)
 
         self._action_space = Box(
                     low=np.array([0.0, -0.2], dtype=np.float32),
@@ -129,8 +131,8 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
         angular_speed = float(action[1])
 
         # reward shaping
-        forward_reward = self._FORWARD_REWARD * max(0.0, linear_speed)
-        rotation_penalty = self._ROTATION_REWARD * abs(angular_speed)
+        forward_reward = self._FORWARD_REWARD * max(0.0, 5 * linear_speed)
+        rotation_penalty = self._ROTATION_REWARD * abs(5 * angular_speed)
 
         return forward_reward + rotation_penalty
 
