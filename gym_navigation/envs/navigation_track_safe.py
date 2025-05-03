@@ -33,6 +33,8 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
     need_auto_reset_wrapper: bool = True #  automatically resets the environment when an episode ends
     need_time_limit_wrapper: bool = False # no truncation
 
+    _SAFE_DISTANCE = 0.4 # represents 1 meter, the collision threshold is 0.4 meters
+
     #_num_envs = 1 # number of parallel environments, set to 1 for now
 
     def __init__(
@@ -141,8 +143,8 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
         Use sensor readings (self._ranges) from the parent NavigationTrack environment.
         If any sensor reads < 1.0, return cost=1.0; else 0.0.
         """
-        if (self._ranges < 1.0).any():
-            return 1.0 # represents 1 meter, the collision threshold is 0.4 meters
+        if (self._ranges < self._SAFE_DISTANCE).any():
+            return 1.0
         return 0.0
     
     def set_seed(self, seed: int) -> None:
@@ -152,6 +154,11 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
 
     def close(self) -> None:
         super().close()
+
+        if self._screen is not None:
+            self._screen = None
+            pygame.quit()
+
     
     @property
     def action_space(self):
@@ -173,6 +180,9 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
         
         # Draw the environment
         self._do_draw(self._screen)
+            
+        # Visualise the safety constraint boundary
+        self._draw_safety_boundary(self._screen)
         
         # Convert surface to numpy array
         array = pygame.surfarray.array3d(self._screen)
@@ -180,6 +190,50 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
         # Convert from (width, height, 3) to (height, width, 3)
         array = array.transpose((1, 0, 2))
         return array
+    
+    def _draw_safety_boundary(self, surface):
+        """Draw the safety constraint boundary as a translucent overlay."""
+        # Create a transparent surface for the safety boundary
+        safety_overlay = pygame.Surface((self._WINDOW_SIZE, self._WINDOW_SIZE), pygame.SRCALPHA)
+        
+        # Calculate the safety boundary points
+        for wall in self._track.walls:
+            # Calculate points 1 meter away from each wall segment
+            self._draw_dilated_wall(safety_overlay, wall, dilation=self._SAFE_DISTANCE, color=(70, 70, 70, 70)) 
+        
+        surface.blit(safety_overlay, (0, 0))
+
+    def _draw_dilated_wall(self, surface, wall, dilation, color):
+        """Draw a dilated version of a wall to represent safety boundaries."""
+        
+        # Access x and y coordinates from the Point objects - use x_coordinate and y_coordinate
+        start_x, start_y = wall.start.x_coordinate, wall.start.y_coordinate
+        end_x, end_y = wall.end.x_coordinate, wall.end.y_coordinate
+        
+        # Calculate normal vector for the wall
+        dx = end_x - start_x
+        dy = end_y - start_y
+        length = np.sqrt(dx*dx + dy*dy)
+        
+        nx, ny = dy/length, dx/length
+        
+        # Calculate 4 corners of the dilated wall polygon
+        p1 = (start_x + nx * dilation, start_y + ny * dilation)
+        p2 = (end_x + nx * dilation, end_y + ny * dilation)
+        p3 = (end_x - nx * dilation, end_y - ny * dilation)
+        p4 = (start_x - nx * dilation, start_y - ny * dilation)
+        
+        
+        p1_px = (int(p1[0] * self._RESOLUTION) + self._X_OFFSET, 
+                self._WINDOW_SIZE - int(p1[1] * self._RESOLUTION) + self._Y_OFFSET)
+        p2_px = (int(p2[0] * self._RESOLUTION) + self._X_OFFSET, 
+                self._WINDOW_SIZE - int(p2[1] * self._RESOLUTION) + self._Y_OFFSET)
+        p3_px = (int(p3[0] * self._RESOLUTION) + self._X_OFFSET, 
+                self._WINDOW_SIZE - int(p3[1] * self._RESOLUTION) + self._Y_OFFSET)
+        p4_px = (int(p4[0] * self._RESOLUTION) + self._X_OFFSET, 
+                self._WINDOW_SIZE - int(p4[1] * self._RESOLUTION) + self._Y_OFFSET)
+        
+        pygame.draw.polygon(surface, color, [p1_px, p2_px, p3_px, p4_px])
     
     @property
     def action_space(self):
