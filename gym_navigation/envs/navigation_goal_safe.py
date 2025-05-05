@@ -1,23 +1,22 @@
 from __future__ import annotations
 
 import random
-from typing import Any, ClassVar, Tuple, Optional, List, Dict, Any, Union
+from typing import Any, ClassVar
 
 import numpy as np
 import torch
 
 from gymnasium.spaces import Box
-# from gymnasium.core import RenderFrame
 
 import pygame
 
 from omnisafe.envs.core import CMDP, env_register
-from gym_navigation.envs.navigation_track import NavigationTrack
+from gym_navigation.envs.navigation_goal import NavigationGoal
 
 @env_register
-class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
+class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
     """
-    A 'safe' variant of NavigationTrack that returns an additional cost signal
+    A 'safe' variant of NavigationGoal that returns an additional cost signal
     if the agent is too close to a wall.
 
     Omnisafe expects:
@@ -28,21 +27,20 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
     """
 
     # register environment ID, typically in the form of 'env_name-v[0-9]+'
-    _support_envs: ClassVar[list[str]] = ['NavigationTrackSafe-v0']
+    _support_envs: ClassVar[list[str]] = ['NavigationGoalSafe-v0']
 
     need_auto_reset_wrapper: bool = True #  automatically resets the environment when an episode ends
     need_time_limit_wrapper: bool = False # no truncation
 
     _SAFE_DISTANCE = 1 # represents 1 meter, the collision threshold is 0.4 meters
 
-    #_num_envs = 1 # number of parallel environments, set to 1 for now
 
     def __init__(
         self,
         env_id: str,
         num_envs: int = 1,
         device: str = 'cpu',
-        track_id: int = 1,
+        track_id: int = 2,
         **kwargs: dict[str, Any]) -> None:
         """OmniSafe will pass env_id and possibly other config in kwargs."""
 
@@ -52,13 +50,17 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
         # self.render_mode = render_mode
         self._count = 0
 
-        self._num_envs = 1 # number of parallel environments, set to 1 for now
+        self._num_envs = num_envs # number of parallel environments, set to 1 for now
+
+        # accumulators for reward and cost
+        self._accumulated_reward = 0.0
+        self._accumulated_cost = 0.0
 
         # Omnisafe expects these properties:
         # - self._observation_space
         # - self._action_space
 
-        NavigationTrack.__init__(self, track_id=track_id)
+        NavigationGoal.__init__(self, track_id=track_id)
 
         self._action_space = Box(
                     low=np.array([0.0, -0.2], dtype=np.float32),
@@ -85,6 +87,10 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
         obs_np, reward_np, terminated, truncated, info = super().step(action_np)
         cost_value = self._calculate_distance_cost()
 
+        # update accumulators
+        self._accumulated_reward += reward_np
+        self._accumulated_cost += cost_value
+
         # convert everything to torch tensors for omnisafe
         obs = torch.as_tensor(obs_np, dtype=torch.float32)
         reward = torch.as_tensor(reward_np, dtype=torch.float32)
@@ -103,6 +109,9 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
 
         obs_np, info = super().reset(seed=seed)
         obs = torch.as_tensor(obs_np, dtype=torch.float32)
+
+        self._accumulated_reward = 0.0
+        self._accumulated_cost = 0.0
 
         self._count = 0
         return obs, info
@@ -124,23 +133,16 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
 
         self._pose.shift(linear_speed, angular_speed)
         self._update_scan()
+        self._distance_from_goal = (
+            self._DISTANCE_STANDARD_DEVIATION
+            + self._pose.position.calculate_distance(self._goal))
 
     def _do_calculate_reward(self, action: np.ndarray) -> float:
-        if self._collision_occurred():
-            return self._COLLISION_REWARD
-
-        linear_speed = float(action[0])
-        angular_speed = float(action[1])
-
-        # reward shaping
-        forward_reward = self._FORWARD_REWARD * max(0.0, 5 * linear_speed)
-        rotation_penalty = self._ROTATION_REWARD * abs(5 * angular_speed)
-
-        return forward_reward + rotation_penalty
+        return super()._do_calculate_reward(0) # parent method does not use action
 
     def _calculate_distance_cost(self) -> float:
         """
-        Use sensor readings (self._ranges) from the parent NavigationTrack environment.
+        Use sensor readings (self._ranges) from the parent NavigationGoal environment.
         If any sensor reads < 1.0, return cost=1.0; else 0.0.
         """
         if (self._ranges < self._SAFE_DISTANCE).any():
@@ -183,6 +185,10 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
             
         # Visualise the safety constraint boundary
         self._draw_safety_boundary(self._screen)
+
+        # Display accumulated reward and cost
+        self._render_text(self._screen, f"Reward: {self._accumulated_reward:.2f}", (10, 10))
+        self._render_text(self._screen, f"Cost: {self._accumulated_cost:.2f}", (10, 40), color=(200, 0, 0))
         
         # Convert surface to numpy array
         array = pygame.surfarray.array3d(self._screen)
@@ -196,11 +202,24 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
         # Create a transparent surface for the safety boundary
         safety_overlay = pygame.Surface((self._WINDOW_SIZE, self._WINDOW_SIZE), pygame.SRCALPHA)
         
-        # Calculate the safety boundary points
-        for wall in self._track.walls:
-            # Calculate points 1 meter away from each wall segment
-            self._draw_dilated_wall(safety_overlay, wall, dilation=self._SAFE_DISTANCE, color=(70, 70, 70, 70)) 
+        for wall in self._world:
+            self._draw_dilated_wall(safety_overlay, wall, dilation=self._SAFE_DISTANCE, color=(70, 70, 70, 70))
+
+        junction_points = set()
+        for wall in self._world:
+            junction_points.add((wall.start.x_coordinate, wall.start.y_coordinate))
+            junction_points.add((wall.end.x_coordinate, wall.end.y_coordinate))
         
+        # Draw circles at each junction point of walls
+        for x, y in junction_points:
+            # convert to pixel coordinates
+            px = int(x * self._RESOLUTION) + self._X_OFFSET
+            py = self._WINDOW_SIZE - int(y * self._RESOLUTION) + self._Y_OFFSET
+            # draw circle with radius equal to safe distance
+            radius = int(self._SAFE_DISTANCE * self._RESOLUTION)
+            pygame.draw.circle(safety_overlay, (70, 70, 70, 70), (px, py), radius)
+    
+
         surface.blit(safety_overlay, (0, 0))
 
     def _draw_dilated_wall(self, surface, wall, dilation, color):
@@ -234,6 +253,16 @@ class NavigationTrackSafe(NavigationTrack, CMDP): # MRO matters here
                 self._WINDOW_SIZE - int(p4[1] * self._RESOLUTION) + self._Y_OFFSET)
         
         pygame.draw.polygon(surface, color, [p1_px, p2_px, p3_px, p4_px])
+
+    def _render_text(self, surface, text, position, color=(0, 0, 0)):
+        """Helper method to render text on the surface."""
+        if not hasattr(self, '_font'):
+            # Initialize font only once
+            pygame.font.init()
+            self._font = pygame.font.SysFont('Arial', 20)
+        
+        text_surface = self._font.render(text, True, color)
+        surface.blit(text_surface, position)
     
     @property
     def action_space(self):
