@@ -16,8 +16,9 @@ from gym_navigation.envs.navigation_goal import NavigationGoal
 @env_register
 class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
     """
-    A 'safe' variant of NavigationGoal that returns an additional cost signal
-    if the agent is too close to a wall.
+    A configurable variant of NavigationGoal that can operate in either:
+    1. Safe mode: Returns an additional cost signal when close to walls (constrained RL)
+    2. Standard mode: Works like NavigationGoal (unconstrained RL)
 
     Omnisafe expects:
     - A .step() method returning (obs, reward, cost, terminated, truncated, info).
@@ -27,12 +28,13 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
     """
 
     # register environment ID, typically in the form of 'env_name-v[0-9]+'
-    _support_envs: ClassVar[list[str]] = ['NavigationGoalSafe-v0']
+    _support_envs: ClassVar[list[str]] = ['NavigationGoalSafe-v0', 'NavigationGoalUnconstrained-v0']
+
 
     need_auto_reset_wrapper: bool = True #  automatically resets the environment when an episode ends
     need_time_limit_wrapper: bool = False # no truncation
 
-    _SAFE_DISTANCE = 1 # represents 1 meter, the collision threshold is 0.4 meters
+    _SAFE_DISTANCE = 0.45 # represents 0.45m, the collision threshold is 0.4 meters
 
 
     def __init__(
@@ -47,6 +49,9 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         self._screen = None
         self._count = 0
         self._device = torch.device(device)
+
+        # check if it's a constrained or unconstrained environment
+        self._constrained = (env_id == 'NavigationGoalSafe-v0')
 
         self._num_envs = num_envs # number of parallel environments, set to 1 for now
 
@@ -83,7 +88,9 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         action_np = np.clip(action_np, self.action_space.low, self.action_space.high)
 
         obs_np, reward_np, terminated, truncated, info = super().step(action_np)
-        cost_value = self._calculate_distance_cost()
+        
+        # Calculate cost depending on mode
+        cost_value = self._calculate_distance_cost() if self._constrained else 0.0
 
         # update accumulators
         self._accumulated_reward += reward_np
@@ -95,6 +102,10 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         cost = torch.as_tensor(cost_value, dtype=torch.float32, device=self._device)
         terminated_tensor = torch.as_tensor(terminated, dtype=torch.bool, device=self._device)
         truncated_tensor = torch.as_tensor(truncated, dtype=torch.bool, device=self._device)
+
+        # Add mode info to help with debugging/analysis
+        info['constrained_mode'] = self._constrained
+
 
         return obs, reward, cost, terminated_tensor, truncated_tensor, info
 
@@ -112,6 +123,10 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         self._accumulated_cost = 0.0
 
         self._count = 0
+
+        # Add mode info to help with debugging/analysis
+        info['constrained_mode'] = self._constrained
+
         return obs, info
     
     def _do_perform_action(self, action: np.ndarray) -> None:
@@ -136,8 +151,20 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
             + self._pose.position.calculate_distance(self._goal))
 
     def _do_calculate_reward(self, action: np.ndarray) -> float:
-        return super()._do_calculate_reward(0) # parent method does not use action
+        if self._constrained:
+            if self._goal_reached():
+                reward = self._GOAL_REWARD
+            else:
+                reward = (
+                    self._TRANSITION_REWARD_FACTOR
+                    * (self._previous_distance_from_goal -
+                    self._distance_from_goal))
 
+            self._previous_distance_from_goal = self._distance_from_goal
+            return reward
+        else:
+            # in unconstrained mode use the parent class reward which includes collision penalties
+            return super()._do_calculate_reward(0) # parent class doesn't use action
     def _calculate_distance_cost(self) -> float:
         """
         Use sensor readings (self._ranges) from the parent NavigationGoal environment.
