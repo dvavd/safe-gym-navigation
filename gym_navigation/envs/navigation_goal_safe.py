@@ -43,12 +43,10 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         track_id: int = 2,
         **kwargs: dict[str, Any]) -> None:
         """OmniSafe will pass env_id and possibly other config in kwargs."""
-
-    
    
         self._screen = None
-        # self.render_mode = render_mode
         self._count = 0
+        self._device = torch.device(device)
 
         self._num_envs = num_envs # number of parallel environments, set to 1 for now
 
@@ -71,7 +69,7 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         self._observation_space = Box(low=self._SCAN_RANGE_MIN,
                                       high=self._SCAN_RANGE_MAX,
                                       shape=(self._N_OBSERVATIONS,),
-                                      dtype=np.float64)
+                                      dtype=np.float32)
 
     def step(self, action: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """
@@ -92,11 +90,11 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         self._accumulated_cost += cost_value
 
         # convert everything to torch tensors for omnisafe
-        obs = torch.as_tensor(obs_np, dtype=torch.float32)
-        reward = torch.as_tensor(reward_np, dtype=torch.float32)
-        cost = torch.as_tensor(cost_value, dtype=torch.float32)
-        terminated_tensor = torch.as_tensor(terminated, dtype=torch.bool)
-        truncated_tensor = torch.as_tensor(truncated, dtype=torch.bool)
+        obs = torch.as_tensor(obs_np, dtype=torch.float32, device=self._device)
+        reward = torch.as_tensor(reward_np, dtype=torch.float32, device=self._device)
+        cost = torch.as_tensor(cost_value, dtype=torch.float32, device=self._device)
+        terminated_tensor = torch.as_tensor(terminated, dtype=torch.bool, device=self._device)
+        truncated_tensor = torch.as_tensor(truncated, dtype=torch.bool, device=self._device)
 
         return obs, reward, cost, terminated_tensor, truncated_tensor, info
 
@@ -108,7 +106,7 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
             self.set_seed(seed)
 
         obs_np, info = super().reset(seed=seed)
-        obs = torch.as_tensor(obs_np, dtype=torch.float32)
+        obs = torch.as_tensor(obs_np, dtype=torch.float32, device=self._device)
 
         self._accumulated_reward = 0.0
         self._accumulated_cost = 0.0
