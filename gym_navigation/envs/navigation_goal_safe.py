@@ -34,7 +34,7 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
     need_auto_reset_wrapper: bool = True #  automatically resets the environment when an episode ends
     need_time_limit_wrapper: bool = False # no truncation
 
-    _SAFE_DISTANCE = 0.45 # represents 0.45m, the collision threshold is 0.4 meters
+    _SAFE_DISTANCE = 0.65 # represents 0.61m, the collision threshold is 0.4 meters
 
 
     def __init__(
@@ -88,6 +88,16 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         action_np = np.clip(action_np, self.action_space.low, self.action_space.high)
 
         obs_np, reward_np, terminated, truncated, info = super().step(action_np)
+
+        if self._goal_reached():
+            info['is_success'] = True
+            info['is_collision'] = False
+        elif self._collision_occurred():
+            info['is_success'] = False
+            info['is_collision'] = True
+        else:
+            info['is_success'] = False
+            info['is_collision'] = False
         
         # Calculate cost depending on mode
         cost_value = self._calculate_distance_cost() if self._constrained else 0.0
