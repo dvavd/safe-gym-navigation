@@ -180,14 +180,15 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         Use sensor readings (self._ranges) from the parent NavigationGoal environment.
         If any sensor reads < 1.0, return sigmoid-shaped cost.
         """
+        _COST_FACTOR = 250
         d_min = float(np.min(self._ranges))
         if d_min <= self._COLLISION_THRESHOLD + 1e-6:
-            return 1.0 
+            return _COST_FACTOR * 1.0 
         if d_min < self._SAFE_DISTANCE:
             # sigmoid function to scale the cost
             x = (self._SAFE_DISTANCE - d_min) / (self._SAFE_DISTANCE - self._COLLISION_THRESHOLD) 
             prox = 1.0 / (1.0 + np.exp(-10.0 * (x - 0.5)))
-            return prox 
+            return prox * _COST_FACTOR
         return 0.0
     
     def set_seed(self, seed: int) -> None:
