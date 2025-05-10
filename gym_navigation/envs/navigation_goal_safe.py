@@ -161,11 +161,12 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
             + self._pose.position.calculate_distance(self._goal))
 
     def _do_calculate_reward(self, action: np.ndarray) -> float:
+        self._TRANSITION_REWARD_FACTOR = 0.1
         if self._constrained:
             if self._goal_reached():
                 reward = self._GOAL_REWARD
             else:
-                reward = min(0,(
+                reward = max(0,(
                     self._TRANSITION_REWARD_FACTOR
                     * (self._previous_distance_from_goal -
                     self._distance_from_goal)))
