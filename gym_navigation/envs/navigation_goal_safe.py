@@ -164,14 +164,14 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         if self._constrained:
             if self._goal_reached():
                 reward = self._GOAL_REWARD
-            else:
-                reward = (
-                    self._TRANSITION_REWARD_FACTOR
-                    * (self._previous_distance_from_goal -
-                    self._distance_from_goal))
+            # else:
+            #     reward = (
+            #         self._TRANSITION_REWARD_FACTOR
+            #         * (self._previous_distance_from_goal -
+            #         self._distance_from_goal))
 
-            self._previous_distance_from_goal = self._distance_from_goal
-            return reward
+            # self._previous_distance_from_goal = self._distance_from_goal
+            # return reward
         else:
             # in unconstrained mode use the parent class reward which includes collision penalties
             return super()._do_calculate_reward(0) # parent class doesn't use action
