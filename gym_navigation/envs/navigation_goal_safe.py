@@ -34,7 +34,7 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
     need_auto_reset_wrapper: bool = True #  automatically resets the environment when an episode ends
     need_time_limit_wrapper: bool = False # no truncation
 
-    _SAFE_DISTANCE = 0.65 # represents 0.65m, the collision threshold is 0.4 meters
+    _SAFE_DISTANCE = 1.00 # represents 1.00m, the collision threshold is 0.4 meters
 
 
     def __init__(
