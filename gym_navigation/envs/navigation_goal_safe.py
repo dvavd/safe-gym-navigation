@@ -100,8 +100,9 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
             info['is_collision'] = False
         
         # Calculate cost depending on mode
-        cost_value = self._calculate_distance_cost() if self._constrained else 0.0
-
+        # cost_value = self._calculate_distance_cost() if self._constrained else 0.0
+        cost_value = self._calculate_distance_cost()
+        
         # update accumulators
         self._accumulated_reward += reward_np
         self._accumulated_cost += cost_value
@@ -181,15 +182,15 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         Use sensor readings (self._ranges) from the parent NavigationGoal environment.
         If any sensor reads < 1.0, return sigmoid-shaped cost.
         """
-        _COST_FACTOR = 1.0
+        _COST_FACTOR = 250.0
         d_min = float(np.min(self._ranges))
         if d_min <= self._COLLISION_THRESHOLD + 1e-6:
             return _COST_FACTOR * 1.0 
         if d_min < self._SAFE_DISTANCE:
-            # sigmoid function to scale the cost
-            x = (self._SAFE_DISTANCE - d_min) / (self._SAFE_DISTANCE - self._COLLISION_THRESHOLD) 
-            prox = 1.0 / (1.0 + np.exp(-10.0 * (x - 0.5)))
-            return prox * _COST_FACTOR
+            x = (d_min - self._COLLISION_THRESHOLD) / (self._SAFE_DISTANCE - self._COLLISION_THRESHOLD)
+            prox = 1.0 - x
+            cost = (1.0 - np.exp(-k * prox)) / (1.0 - np.exp(-k))
+            return _COST_FACTOR * cost
         return 0.0
     
     def set_seed(self, seed: int) -> None:
