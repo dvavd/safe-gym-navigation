@@ -102,7 +102,7 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         # Calculate cost depending on mode
         # cost_value = self._calculate_distance_cost() if self._constrained else 0.0
         cost_value = self._calculate_distance_cost()
-        
+
         # update accumulators
         self._accumulated_reward += reward_np
         self._accumulated_cost += cost_value
@@ -187,6 +187,7 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         if d_min <= self._COLLISION_THRESHOLD + 1e-6:
             return _COST_FACTOR * 1.0 
         if d_min < self._SAFE_DISTANCE:
+            k = 5
             x = (d_min - self._COLLISION_THRESHOLD) / (self._SAFE_DISTANCE - self._COLLISION_THRESHOLD)
             prox = 1.0 - x
             cost = (1.0 - np.exp(-k * prox)) / (1.0 - np.exp(-k))
