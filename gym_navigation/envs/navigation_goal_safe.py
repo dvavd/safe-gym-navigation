@@ -5,6 +5,7 @@ from typing import Any, ClassVar
 
 import numpy as np
 import torch
+import math
 
 from gymnasium.spaces import Box
 
@@ -31,11 +32,13 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
     _support_envs: ClassVar[list[str]] = ['NavigationGoalSafe-v0', 'NavigationGoalUnconstrained-v0']
 
 
-    need_auto_reset_wrapper: bool = True #  automatically resets the environment when an episode ends
+    need_auto_reset_wrapper: bool = False #  automatically resets the environment when an episode ends
     need_time_limit_wrapper: bool = False # no truncation
 
     _SAFE_DISTANCE = 1.00 # represents 1.00m, the collision threshold is 0.4 meters
-
+    _SCAN_ANGLES = (-math.pi / 2, -math.pi * 3 / 8, -math.pi / 4, -math.pi / 8, 0, math.pi / 8, math.pi / 4, math.pi * 3 / 8, math.pi / 2)
+    _COST_FACTOR = 200.0
+    _TRANSITION_REWARD_FACTOR = 1
 
     def __init__(
         self,
@@ -162,15 +165,14 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
             + self._pose.position.calculate_distance(self._goal))
 
     def _do_calculate_reward(self, action: np.ndarray) -> float:
-        self._TRANSITION_REWARD_FACTOR = 0.1
         if self._constrained:
             if self._goal_reached():
                 reward = self._GOAL_REWARD
             else:
-                reward = max(0,(
+                reward = (
                     self._TRANSITION_REWARD_FACTOR
                     * (self._previous_distance_from_goal -
-                    self._distance_from_goal)))
+                    self._distance_from_goal))
 
             self._previous_distance_from_goal = self._distance_from_goal
             return reward
@@ -182,16 +184,15 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         Use sensor readings (self._ranges) from the parent NavigationGoal environment.
         If any sensor reads < 1.0, return sigmoid-shaped cost.
         """
-        _COST_FACTOR = 250.0
         d_min = float(np.min(self._ranges))
         if d_min <= self._COLLISION_THRESHOLD + 1e-6:
-            return _COST_FACTOR * 1.0 
+            return self._COST_FACTOR * 1.0 
         if d_min < self._SAFE_DISTANCE:
             k = 5
             x = (d_min - self._COLLISION_THRESHOLD) / (self._SAFE_DISTANCE - self._COLLISION_THRESHOLD)
             prox = 1.0 - x
             cost = (1.0 - np.exp(-k * prox)) / (1.0 - np.exp(-k))
-            return _COST_FACTOR * cost
+            return self._COST_FACTOR * cost
         return 0.0
     
     def set_seed(self, seed: int) -> None:
