@@ -6,8 +6,8 @@ import json
 import copy
 from omnisafe.envs.wrapper import TimeLimit
 from datetime import datetime
-import sys # Required for stdout redirection
-from contextlib import contextmanager # Required for context manager
+import sys
+from contextlib import contextmanager
 
 @contextmanager
 def suppress_stdout():
@@ -16,7 +16,7 @@ def suppress_stdout():
     try:
         yield
     finally:
-        sys.stdout.close() # Important to close the file descriptor
+        sys.stdout.close()
         sys.stdout = original_stdout
 
 
@@ -112,7 +112,7 @@ def main():
             }
         },
         "train_cfgs": {
-            "total_steps": 2000000,
+            "total_steps": 40000,
             "vector_env_nums": 1,
             "parallel": 1,
             "device": "cuda:0"
@@ -158,16 +158,16 @@ def main():
                             constrained_cfg['lagrange_cfgs']['cost_limit'] = cost_limit_val
                             constrained_cfg['algo_cfgs']['batch_size'] = batch_size_val
                             
-                            print("Starting constrained agent training...")
                             constrained_env_id = 'NavigationGoalSafe-v0'
-                            constrained_agent = omnisafe.Agent('PPOLag', constrained_env_id, custom_cfgs=constrained_cfg)
-                            constrained_agent.learn() 
-                            print("Constrained agent training finished.")
+                            with suppress_stdout():
+                                constrained_agent = omnisafe.Agent('PPOLag', constrained_env_id, custom_cfgs=constrained_cfg)
+                                constrained_agent.learn() 
+                            print("Training finished.")
 
                             eval_metrics = run_evaluation_and_save(
                                 agent_log_dir=constrained_agent.agent._logger.log_dir,
-                                num_eval_episodes=100,
-                                eval_time_limit=1000,
+                                num_episodes=100,
+                                time_limit=1000,
                             )
 
                             if eval_metrics:
