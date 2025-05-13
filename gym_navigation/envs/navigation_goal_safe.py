@@ -32,13 +32,15 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
     _support_envs: ClassVar[list[str]] = ['NavigationGoalSafe-v0', 'NavigationGoalUnconstrained-v0']
 
 
-    need_auto_reset_wrapper: bool = False #  automatically resets the environment when an episode ends
+    need_auto_reset_wrapper: bool = True #  automatically resets the environment when an episode ends
     need_time_limit_wrapper: bool = False # no truncation
 
     _SAFE_DISTANCE = 1.00 # represents 1.00m, the collision threshold is 0.4 meters
     _SCAN_ANGLES = (-math.pi / 2, -math.pi * 3 / 8, -math.pi / 4, -math.pi / 8, 0, math.pi / 8, math.pi / 4, math.pi * 3 / 8, math.pi / 2)
     _COST_FACTOR = 200.0
     _TRANSITION_REWARD_FACTOR = 1
+    _N_MEASUREMENTS = len(_SCAN_ANGLES)
+    _N_OBSERVATIONS = _N_MEASUREMENTS + 2
 
     def __init__(
         self,
@@ -73,6 +75,16 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
                     high=np.array([0.2, 0.2], dtype=np.float32),
                     dtype=np.float32,
                 )
+        
+        high = np.array(self._N_MEASUREMENTS * [self._SCAN_RANGE_MAX]
+                        + [self._MAXIMUM_GOAL_DISTANCE]
+                        + [math.pi],
+                        dtype=np.float64)
+
+        low = np.array(self._N_MEASUREMENTS * [self._SCAN_RANGE_MIN]
+                       + [0.0]
+                       + [-math.pi],
+                       dtype=np.float64)
  
         self._observation_space = Box(low=self._SCAN_RANGE_MIN,
                                       high=self._SCAN_RANGE_MAX,
