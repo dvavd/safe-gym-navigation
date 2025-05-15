@@ -199,12 +199,12 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         d_min = float(np.min(self._ranges))
         if d_min <= self._COLLISION_THRESHOLD + 1e-6:
             return self._COST_FACTOR * 1.0 
-        if d_min < self._SAFE_DISTANCE:
-            k = 5
-            x = (d_min - self._COLLISION_THRESHOLD) / (self._SAFE_DISTANCE - self._COLLISION_THRESHOLD)
-            prox = 1.0 - x
-            cost = (1.0 - np.exp(-k * prox)) / (1.0 - np.exp(-k))
-            return self._COST_FACTOR * cost
+        # if d_min < self._SAFE_DISTANCE:
+        #     k = 5
+        #     x = (d_min - self._COLLISION_THRESHOLD) / (self._SAFE_DISTANCE - self._COLLISION_THRESHOLD)
+        #     prox = 1.0 - x
+        #     cost = (1.0 - np.exp(-k * prox)) / (1.0 - np.exp(-k))
+        #     return self._COST_FACTOR * cost
         return 0.0
     
     def set_seed(self, seed: int) -> None:
