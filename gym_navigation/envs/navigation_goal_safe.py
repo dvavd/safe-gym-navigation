@@ -35,7 +35,7 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
     need_auto_reset_wrapper: bool = True #  automatically resets the environment when an episode ends
     need_time_limit_wrapper: bool = False # no truncation
 
-    _SAFE_DISTANCE = 1.00 # represents 1.00m, the collision threshold is 0.4 meters
+    _SAFE_DISTANCE = 0.45 # represents 0.45m, the collision threshold is 0.4 meters
     _SCAN_ANGLES = (-math.pi / 2, -math.pi * 3 / 8, -math.pi / 4, -math.pi / 8, 0, math.pi / 8, math.pi / 4, math.pi * 3 / 8, math.pi / 2)
     _COST_FACTOR = 200.0
     _TRANSITION_REWARD_FACTOR = 1
@@ -197,14 +197,9 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         If any sensor reads < 1.0, return sigmoid-shaped cost.
         """
         d_min = float(np.min(self._ranges))
-        if d_min <= self._COLLISION_THRESHOLD + 1e-6:
-            return self._COST_FACTOR * 1.0 
-        # if d_min < self._SAFE_DISTANCE:
-        #     k = 5
-        #     x = (d_min - self._COLLISION_THRESHOLD) / (self._SAFE_DISTANCE - self._COLLISION_THRESHOLD)
-        #     prox = 1.0 - x
-        #     cost = (1.0 - np.exp(-k * prox)) / (1.0 - np.exp(-k))
-        #     return self._COST_FACTOR * cost
+        if d_min <= self._SAFE_DISTANCE:
+            return self._COST_FACTOR
+        
         return 0.0
     
     def set_seed(self, seed: int) -> None:
