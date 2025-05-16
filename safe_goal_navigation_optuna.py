@@ -85,7 +85,7 @@ def objective(trial):
             }
         },
         "train_cfgs": {
-            "total_steps": 4000000,
+            "total_steps": 1000000,
             "vector_env_nums": 1,
             "parallel": 1,
             "device": "cpu"
@@ -124,56 +124,66 @@ def objective(trial):
     def learn_with_pruning():
         start_time = time.time()
         agent.agent._logger.log('INFO: Start training')
-        
-        for epoch in range(agent.agent._cfgs.train_cfgs.epochs):
-            epoch_time = time.time()
-            rollout_time = time.time()
+        try:
+            for epoch in range(agent.agent._cfgs.train_cfgs.epochs):
+                epoch_time = time.time()
+                rollout_time = time.time()
 
-            agent.agent._env.rollout(
-                steps_per_epoch=agent.agent._steps_per_epoch,
-                agent=agent.agent._actor_critic,
-                buffer=agent.agent._buf,
-                logger=agent.agent._logger,
-            )
-            agent.agent._logger.store({'Time/Rollout': time.time() - rollout_time})
-            update_time = time.time()
-            agent.agent._update()
-            agent.agent._logger.store({'Time/Update': time.time() - update_time})
+                agent.agent._env.rollout(
+                    steps_per_epoch=agent.agent._steps_per_epoch,
+                    agent=agent.agent._actor_critic,
+                    buffer=agent.agent._buf,
+                    logger=agent.agent._logger,
+                )
+                agent.agent._logger.store({'Time/Rollout': time.time() - rollout_time})
+                update_time = time.time()
+                agent.agent._update()
+                agent.agent._logger.store({'Time/Update': time.time() - update_time})
 
-            if agent.agent._cfgs.model_cfgs.exploration_noise_anneal:
-                agent.agent._actor_critic.annealing(epoch)
+                if agent.agent._cfgs.model_cfgs.exploration_noise_anneal:
+                    agent.agent._actor_critic.annealing(epoch)
 
-            if agent.agent._cfgs.model_cfgs.actor.lr is not None:
-                agent.agent._actor_critic.actor_scheduler.step()
+                if agent.agent._cfgs.model_cfgs.actor.lr is not None:
+                    agent.agent._actor_critic.actor_scheduler.step()
+                
+                if callback(agent, epoch):
+                    raise optuna.exceptions.TrialPruned()
+                
+                agent.agent._logger.store(
+                    {
+                        'TotalEnvSteps': (epoch + 1) * agent.agent._cfgs.algo_cfgs.steps_per_epoch,
+                        'Time/FPS': agent.agent._cfgs.algo_cfgs.steps_per_epoch / (time.time() - epoch_time),
+                        'Time/Total': (time.time() - start_time),
+                        'Time/Epoch': (time.time() - epoch_time),
+                        'Train/Epoch': epoch,
+                        'Train/LR': (
+                            0.0
+                            if agent.agent._cfgs.model_cfgs.actor.lr is None
+                            else agent.agent._actor_critic.actor_scheduler.get_last_lr()[0]
+                        ),
+                    },
+                )
+
+                # not needed 
+                #agent.agent._logger.dump_tabular()
             
-            if callback(agent, epoch):
-                raise optuna.exceptions.TrialPruned()
-            
-            agent.agent._logger.store(
-                {
-                    'TotalEnvSteps': (epoch + 1) * agent.agent._cfgs.algo_cfgs.steps_per_epoch,
-                    'Time/FPS': agent.agent._cfgs.algo_cfgs.steps_per_epoch / (time.time() - epoch_time),
-                    'Time/Total': (time.time() - start_time),
-                    'Time/Epoch': (time.time() - epoch_time),
-                    'Train/Epoch': epoch,
-                    'Train/LR': (
-                        0.0
-                        if agent.agent._cfgs.model_cfgs.actor.lr is None
-                        else agent.agent._actor_critic.actor_scheduler.get_last_lr()[0]
-                    ),
-                },
-            )
+            ep_ret = agent.agent._logger.get_stats('Metrics/EpRet')[0]
+            ep_cost = agent.agent._logger.get_stats('Metrics/EpCost')[0]
+            ep_len = agent.agent._logger.get_stats('Metrics/EpLen')[0]
+            agent.agent._logger.close()
+            agent.agent._env.close()
 
-            # not needed 
-            #agent.agent._logger.dump_tabular()
+            return ep_ret, ep_cost, ep_len
         
-        ep_ret = agent.agent._logger.get_stats('Metrics/EpRet')[0]
-        ep_cost = agent.agent._logger.get_stats('Metrics/EpCost')[0]
-        ep_len = agent.agent._logger.get_stats('Metrics/EpLen')[0]
-        agent.agent._logger.close()
-        agent.agent._env.close()
-
-        return ep_ret, ep_cost, ep_len
+        finally:
+            try:
+                agent.agent._logger.close()
+            except Exception:
+                pass
+            try:
+                agent.agent._env.close()
+            except Exception:
+                pass
     
     # replace learn method
     agent.agent.learn = learn_with_pruning
