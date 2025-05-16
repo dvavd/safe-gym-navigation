@@ -29,7 +29,7 @@ class OmniSafeOptunaCallback:
             ep_reward = agent.agent._logger.get_stats("Metrics/EpRet")[0]
             ep_cost = agent.agent._logger.get_stats("Metrics/EpCost")[0]
             print(f"Epoch: {epoch}, EpRet: {ep_reward}, EpCost: {ep_cost}")
-            metric_value =  ep_reward - 10 * ep_cost
+            metric_value =  ep_reward - 200 * ep_cost
             
             self.trial.report(metric_value, epoch)
             
@@ -39,16 +39,25 @@ class OmniSafeOptunaCallback:
 
 
 def objective(trial):
+    net_arch = {
+        "one_layer": [32],
+        "one_layer2": [64],
+        "two_layer": [64,32],
+        "two_layer2": [64, 64],
+        "three_layer": [64, 32, 16],
+        "three_layer2": [64, 64, 32],
+    }
     lr_critic = trial.suggest_float("lr_critic", 1e-5, 1e-3)
     lr_actor = trial.suggest_float("lr_actor", 1e-5, 1e-3)
     lr_lambda = trial.suggest_categorical("lagrangian_multiplier_init", [0.01, 0.1, 0.5, 1.0])
+    hidden_sizes_actor = trial.suggest_categorical("hidden_size", net_arch.keys())
+    hidden_sizes_critic = trial.suggest_categorical("hidden_size", net_arch.keys())
     lagrangian_multiplier_init = trial.suggest_float("lr_lambda", 1e-3, 1e-1) 
     batch_size = trial.suggest_categorical("batch_size", [64, 128, 256, 512, 1024])
     steps_per_epoch = trial.suggest_categorical("steps_per_epoch", [1024, 2048, 4096, 8192, 16384])
     entropy_coef = trial.suggest_float("entropy_coef", 0.01, 0.1)
     max_grad_norm = trial.suggest_float("max_grad_norm", 0.01, 1.0)
-    hidden_sizes = trial.suggest_categorical("hidden_size", [[64,32], [64, 64], [64, 64, 32], [64,32,16]])
-    cost_limit = trial.suggest_float("cost_limit", 0.5, 10.0)
+    cost_limit = trial.suggest_float("cost_limit", 0.0, 1.0)
     reward_normalize = trial.suggest_categorical("reward_normalize", [True, False])
     cost_normalize = trial.suggest_categorical("cost_normalize", [True, False])
     obs_normalize = trial.suggest_categorical("obs_normalize", [True, False])
@@ -68,11 +77,11 @@ def objective(trial):
             "exploration_noise_anneal": exploration_noise_anneal,
             "actor": {
                 "lr": lr_actor,
-                "hidden_sizes": hidden_sizes
+                "hidden_sizes": net_arch[hidden_sizes_actor],
             },
             "critic": {
                 "lr": lr_critic,
-                "hidden_sizes": hidden_sizes
+                "hidden_sizes": net_arch[hidden_sizes_critic],
             }
         },
         "train_cfgs": {
@@ -171,7 +180,7 @@ def objective(trial):
     
     try:
         ep_ret, ep_cost, _ = agent.learn()
-        return ep_ret - 10 * ep_cost # make sure the value is right
+        return ep_ret - 200 * ep_cost # make sure the value is right
     except optuna.exceptions.TrialPruned:
         raise
     except AssertionError as e:
