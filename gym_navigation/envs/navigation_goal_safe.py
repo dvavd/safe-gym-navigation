@@ -13,6 +13,7 @@ import pygame
 
 from omnisafe.envs.core import CMDP, env_register
 from gym_navigation.envs.navigation_goal import NavigationGoal
+import re
 
 @env_register
 class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
@@ -29,13 +30,14 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
     """
 
     # register environment ID, typically in the form of 'env_name-v[0-9]+'
-    _support_envs: ClassVar[list[str]] = ['NavigationGoalSafe-v0', 'NavigationGoalUnconstrained-v0']
-
+    #_support_envs: ClassVar[list[str]] = ['NavigationGoalSafe-v0', 'NavigationGoalUnconstrained-v0']
+    _support_envs: ClassVar[list[str]] = [f'NavigationGoalSafe{i}-v0' for i in range(40, 66) # Generates 'NavigationGoalSafe40-v0' to 'NavigationGoalSafe65-v0'
+    ] + ['NavigationGoalUnconstrained-v0']
 
     need_auto_reset_wrapper: bool = True #  automatically resets the environment when an episode ends
     need_time_limit_wrapper: bool = False # no truncation
 
-    _SAFE_DISTANCE = 0.40 # represents 0.40m, the collision threshold is 0.4 meters
+    #_SAFE_DISTANCE = 0.40 # represents 0.40m, the collision threshold is 0.4 meters
     _SCAN_ANGLES = (-math.pi / 2, -math.pi * 3 / 8, -math.pi / 4, -math.pi / 8, 0, math.pi / 8, math.pi / 4, math.pi * 3 / 8, math.pi / 2)
     _COST_FACTOR = 1.0
     _TRANSITION_REWARD_FACTOR = 1
@@ -56,7 +58,19 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
         self._device = torch.device(device)
 
         # check if it's a constrained or unconstrained environment
-        self._constrained = (env_id == 'NavigationGoalSafe-v0')
+        if env_id == 'NavigationGoalUnconstrained-v0':
+            self._constrained = False
+            self._SAFE_DISTANCE = 0.0
+        else:
+            match = re.fullmatch(r'NavigationGoalSafe(\d+)-v0', env_id)
+            if match:
+                self._constrained = True
+                threshold_value = int(match.group(1))
+                self._current_safe_distance = threshold_value / 100.0 
+                if not (0.0 < self._current_safe_distance): 
+                    raise ValueError(
+                        f"Parsed threshold {self._current_safe_distance}m from env_id '{env_id}' must be positive."
+                    )
 
         self._num_envs = num_envs # number of parallel environments, set to 1 for now
 
