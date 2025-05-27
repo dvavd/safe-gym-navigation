@@ -66,10 +66,10 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
             if match:
                 self._constrained = True
                 threshold_value = int(match.group(1))
-                self._current_safe_distance = threshold_value / 100.0 
-                if not (0.0 < self._current_safe_distance): 
+                self._SAFE_DISTANCE = threshold_value / 100.0 
+                if not (0.0 < self._SAFE_DISTANCE): 
                     raise ValueError(
-                        f"Parsed threshold {self._current_safe_distance}m from env_id '{env_id}' must be positive."
+                        f"Parsed threshold {self._SAFE_DISTANCE}m from env_id '{env_id}' must be positive."
                     )
 
         self._num_envs = num_envs # number of parallel environments, set to 1 for now
