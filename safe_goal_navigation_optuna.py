@@ -40,21 +40,21 @@ class OmniSafeOptunaCallback:
 
 def objective(trial):
     net_arch = {
-        "one_layer": [32],
-        "one_layer2": [64],
+        # "one_layer": [32],
+        # "one_layer2": [64],
         "two_layer": [64,32],
-        "two_layer2": [64, 64],
-        "three_layer": [64, 32, 16],
+        # "two_layer2": [64, 64],
+        # "three_layer": [64, 32, 16],
         "three_layer2": [64, 64, 32],
     }
     lr_critic = trial.suggest_float("lr_critic", 1e-5, 1e-3)
     lr_actor = trial.suggest_float("lr_actor", 1e-5, 1e-3)
-    lr_lambda = trial.suggest_categorical("lagrangian_multiplier_init", [0.01, 0.1, 0.5, 1.0])
     hidden_sizes_actor = trial.suggest_categorical("hidden_size", net_arch.keys())
     hidden_sizes_critic = trial.suggest_categorical("hidden_size", net_arch.keys())
-    lagrangian_multiplier_init = trial.suggest_float("lr_lambda", 1e-3, 1e-1) 
+    lagrangian_multiplier_init = trial.suggest_float("lagrangian_multiplier_init", 0.01, 1.0)
+    lr_lambda = trial.suggest_float("lr_lambda", 1e-4, 1e-1)
     batch_size = trial.suggest_categorical("batch_size", [64, 128, 256, 512, 1024])
-    steps_per_epoch = trial.suggest_categorical("steps_per_epoch", [1024, 2048, 4096, 8192, 16384])
+    #steps_per_epoch = trial.suggest_categorical("steps_per_epoch", [1024, 2048, 4096, 8192, 16384])
     entropy_coef = trial.suggest_float("entropy_coef", 0.01, 0.1)
     max_grad_norm = trial.suggest_float("max_grad_norm", 0.01, 1.0)
     cost_limit = trial.suggest_float("cost_limit", 0.0, 1.0)
@@ -69,6 +69,12 @@ def objective(trial):
     use_cost = trial.suggest_categorical("use_cost", [True, False])
     linear_lr_decay = trial.suggest_categorical("linear_lr_decay", [True, False])
     exploration_noise_anneal = trial.suggest_categorical("exploration_noise_anneal", [True, False])
+    clip_range = trial.suggest_float("clip_range", 0.1, 0.4)
+    update_iters = trial.suggest_int("update_iters", 5, 80)
+    window_lens = trial.suggest_int("window_len", 1, 200)
+    adv_estimation_method = trial.suggest_categorical("adv_estimation_method",["gae", "gae-rtg", "plain", "vtrace"])
+    lam = trial.suggest_float("lam", 0.9, 0.99)
+    lam_c = trial.suggest_float("lam_c", 0.9, 0.99)
 
     custom_cfgs = {
         "model_cfgs": {
@@ -88,11 +94,12 @@ def objective(trial):
             "total_steps": 1000000,
             "vector_env_nums": 1,
             "parallel": 1,
-            "device": "cpu"
+            "device": "cuda:1"
         },
         "algo_cfgs": {
+            'update_iters': update_iters,
             'batch_size': batch_size,
-            "steps_per_epoch": steps_per_epoch,
+            "steps_per_epoch": 16384,
             "entropy_coef": entropy_coef,
             "max_grad_norm": max_grad_norm,
             "reward_normalize": reward_normalize,
@@ -103,7 +110,11 @@ def objective(trial):
             "use_critic_norm": use_critic_norm,
             "standardized_rew_adv": standardized_rew_adv,
             "standardized_cost_adv": standardized_cost_adv,
-            "use_cost": use_cost
+            "lam": lam,
+            "lam_c": lam_c,
+            "adv_estimation_method": adv_estimation_method,
+            "use_cost": use_cost,
+            "clip": clip_range,
         },
         "lagrange_cfgs": {
             "cost_limit": cost_limit,
@@ -111,6 +122,9 @@ def objective(trial):
             "lambda_lr": lr_lambda,
             "lambda_optimizer": "Adam",
             "lagrangian_upper_bound": None
+        },
+        "logger_cfgs": {
+            "window_lens": window_lens,
         },
     }
             
@@ -200,8 +214,19 @@ def objective(trial):
             return float('-inf') 
         else:
             raise
+    except ValueError as e:
+        if "Expected parameter loc" in str(e) and "nan" in str(e):
+            print(f"Trial failed with ValueError: {e}. Returning negative infinity score to continue optimization.")
+            return float('-inf')
+        else:
+            raise
 
-storage = "sqlite:///safe_goal_navigation_study.db"
-study_name = "safe_goal_navigation"
-study = optuna.create_study(direction="maximize", study_name=study_name, storage=storage, load_if_exists=True)
-study.optimize(objective, n_trials=10, n_jobs=4)
+storage = "sqlite:///safe_goal_navigation_study4.db"
+study_name = "safe_goal_navigation4"
+pruner = optuna.pruners.MedianPruner(
+    n_startup_trials=20,
+    n_warmup_steps=1,
+    interval_steps=5
+)
+study = optuna.create_study(direction="maximize", study_name=study_name, storage=storage, load_if_exists=True, pruner=pruner)
+study.optimize(objective, n_trials=10000, n_jobs=4)
