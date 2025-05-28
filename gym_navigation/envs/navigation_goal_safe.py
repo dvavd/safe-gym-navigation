@@ -32,7 +32,7 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
     # register environment ID, typically in the form of 'env_name-v[0-9]+'
     #_support_envs: ClassVar[list[str]] = ['NavigationGoalSafe-v0', 'NavigationGoalUnconstrained-v0']
     _support_envs: ClassVar[list[str]] = [f'NavigationGoalSafe{i}-v0' for i in range(40, 66) # Generates 'NavigationGoalSafe40-v0' to 'NavigationGoalSafe65-v0'
-    ] + ['NavigationGoalUnconstrained-v0']
+    ] + ['NavigationGoalUnconstrained-v0'] + ['NavigationGoalSafe-v0']
 
     need_auto_reset_wrapper: bool = True #  automatically resets the environment when an episode ends
     need_time_limit_wrapper: bool = False # no truncation
@@ -71,6 +71,8 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
                     raise ValueError(
                         f"Parsed threshold {self._SAFE_DISTANCE}m from env_id '{env_id}' must be positive."
                     )
+            else:
+                self._SAFE_DISTANCE = 0.40
 
         self._num_envs = num_envs # number of parallel environments, set to 1 for now
 
