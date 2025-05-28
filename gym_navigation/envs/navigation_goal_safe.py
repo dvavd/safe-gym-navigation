@@ -63,8 +63,8 @@ class NavigationGoalSafe(NavigationGoal, CMDP): # MRO matters here
             self._SAFE_DISTANCE = 0.0
         else:
             match = re.fullmatch(r'NavigationGoalSafe(\d+)-v0', env_id)
+            self._constrained = True
             if match:
-                self._constrained = True
                 threshold_value = int(match.group(1))
                 self._SAFE_DISTANCE = threshold_value / 100.0 
                 if not (0.0 < self._SAFE_DISTANCE): 
